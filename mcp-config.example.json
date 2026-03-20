@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "collab": {
+      "command": "python",
+      "args": ["server.py", "--mcp"],
+      "cwd": "/caminho/para/tools/collab-server"
+    }
+  }
+}
