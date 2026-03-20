@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Servidor híbrido de colaboração entre agentes.
+Versão de debug do servidor com logging extra.
 """
 import asyncio
 import json
@@ -10,25 +10,14 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse, FileResponse
 import uvicorn
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
-from models import Message, MessageCreate, MessageType, Agent, AgentStatus, WebSocketMessage
+from models import Message, MessageCreate, MessageType, Agent, AgentStatus, Thread, WebSocketMessage
 from storage import Storage
-
-
-def serialize_for_ws(obj):
-    """Serializa objecto para JSON, convertendo datetimes."""
-    if isinstance(obj, dict):
-        return {k: serialize_for_ws(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [serialize_for_ws(i) for i in obj]
-    elif isinstance(obj, datetime):
-        return obj.isoformat()
-    return obj
 
 
 class ConnectionManager:
@@ -42,27 +31,26 @@ class ConnectionManager:
     
     async def disconnect(self, agent_id: str):
         self.active_connections.pop(agent_id, None)
-        print(f"[WS] {agent_id} desconectou.")
+        print(f"[WS] {agent_id} desconectou. Total: {len(self.active_connections)}")
     
     async def broadcast(self, message: WebSocketMessage):
-        # Criar cópia da lista para evitar erro de iteração
-        connections = list(self.active_connections.items())
-        data = serialize_for_ws(message.model_dump())
-        
-        print(f"[WS] Broadcasting para {len(connections)} conexões")
-        
-        for agent_id, ws in connections:
+        print(f"[WS] Broadcasting para {len(self.active_connections)} conexões: {list(self.active_connections.keys())}")
+        dead = []
+        for agent_id, ws in self.active_connections.items():
             try:
-                await ws.send_json(data)
+                await ws.send_json(message.model_dump())
+                print(f"[WS] Enviado para {agent_id}")
             except Exception as e:
                 print(f"[WS] Erro ao enviar para {agent_id}: {e}")
-                self.active_connections.pop(agent_id, None)
+                dead.append(agent_id)
+        for agent_id in dead:
+            self.active_connections.pop(agent_id, None)
 
 
 storage: Optional[Storage] = None
 manager = ConnectionManager()
 
-app = FastAPI(title="Collab Server")
+app = FastAPI(title="Collab Server Debug")
 
 
 @app.on_event("startup")
