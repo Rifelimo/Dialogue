@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-Bot agente que responde automaticamente a mensagens.
-Uso: python bot_agent.py --name claude --style helpful
-      python bot_agent.py --name codex --style technical
+Bot agente que responde apenas a mensagens do utilizador.
 """
 import argparse
 import asyncio
@@ -13,15 +11,15 @@ import websockets
 RESPONSES = {
     "claude": {
         "greeting": "Olá! Sou o Claude Code. Como posso ajudar?",
-        "default": "Entendido. Estou a analisar o que disseste.",
-        "task": "Vou trabalhar nisso. Dá-me um momento.",
+        "default": "Entendido. Estou a analisar.",
+        "task": "Vou trabalhar nisso.",
         "question": "Boa pergunta. Deixa-me pensar..."
     },
     "codex": {
         "greeting": "Hey! Codex aqui. Pronto para programar.",
-        "default": "OK, estou a processar isso.",
-        "task": "A implementar... vou mostrar o código em breve.",
-        "question": "Interessante. Vou investigar."
+        "default": "OK, a processar.",
+        "task": "A implementar...",
+        "question": "Vou investigar."
     }
 }
 
@@ -42,7 +40,6 @@ async def run_bot(agent_name: str):
     uri = f"ws://localhost:9999/ws/{agent_name}"
     api_url = "http://localhost:9999/api"
     
-    # Registar agente
     async with httpx.AsyncClient() as client:
         await client.post(f"{api_url}/agents/register", json={
             "id": agent_name,
@@ -50,11 +47,9 @@ async def run_bot(agent_name: str):
             "capabilities": ["chat", "code", "review"]
         })
     
-    print(f"[{agent_name}] A ligar ao servidor...")
+    print(f"[{agent_name}] Online!")
     
     async with websockets.connect(uri) as ws:
-        print(f"[{agent_name}] Online e a ouvir!")
-        
         while True:
             try:
                 data = await ws.recv()
@@ -67,29 +62,31 @@ async def run_bot(agent_name: str):
                     msg_type = m.get("type", "chat")
                     to = m.get("to", "all")
                     
-                    # Ignorar próprias mensagens e mensagens de sistema
-                    if sender == agent_name or sender == "system":
+                    # SÓ responder a mensagens do USER
+                    # Ignorar mensagens de outros bots ou de mim próprio
+                    if sender != "user":
                         continue
                     
-                    # Responder se for para mim ou para todos
-                    if to == "all" or to == agent_name:
-                        print(f"[{agent_name}] Recebi de [{sender}]: {content}")
-                        
-                        # Pequeno delay para parecer mais natural
-                        await asyncio.sleep(1)
-                        
-                        response = get_response(agent_name, content, msg_type)
-                        
-                        async with httpx.AsyncClient() as client:
-                            await client.post(f"{api_url}/send", json={
-                                "from": agent_name,
-                                "to": sender if sender != "user" else "all",
-                                "type": "chat",
-                                "content": response
-                            })
-                        
-                        print(f"[{agent_name}] Respondi: {response}")
-                        
+                    # Só responder se for para mim ou para todos
+                    if to != "all" and to != agent_name:
+                        continue
+                    
+                    print(f"[{agent_name}] User disse: {content}")
+                    
+                    await asyncio.sleep(0.5)
+                    
+                    response = get_response(agent_name, content, msg_type)
+                    
+                    async with httpx.AsyncClient() as client:
+                        await client.post(f"{api_url}/send", json={
+                            "from": agent_name,
+                            "to": "all",
+                            "type": "chat",
+                            "content": response
+                        })
+                    
+                    print(f"[{agent_name}] Respondi: {response}")
+                    
             except websockets.exceptions.ConnectionClosed:
                 print(f"[{agent_name}] Conexão perdida. A reconectar...")
                 await asyncio.sleep(2)
