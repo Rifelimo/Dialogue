@@ -3,33 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collab Server - Dashboard</title>
+    <title>Dialogue - Colaboração entre Agentes</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .message-enter {
-            animation: slideIn 0.2s ease-out;
-        }
+        .message-enter { animation: slideIn 0.2s ease-out; }
         @keyframes slideIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .agent-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
-        }
         .agent-user { background: #dbeafe; color: #1e40af; }
         .agent-claude { background: #fce7f3; color: #9d174d; }
         .agent-codex { background: #d1fae5; color: #065f46; }
-        .agent-other { background: #e5e7eb; color: #374151; }
-        .typing-indicator span {
+        .typing span {
             animation: bounce 1.4s infinite ease-in-out both;
+            display: inline-block; width: 6px; height: 6px;
+            background: #9ca3af; border-radius: 50%; margin: 0 2px;
         }
-        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
-        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        .typing span:nth-child(1) { animation-delay: -0.32s; }
+        .typing span:nth-child(2) { animation-delay: -0.16s; }
         @keyframes bounce {
             0%, 80%, 100% { transform: scale(0); }
             40% { transform: scale(1); }
@@ -37,353 +28,166 @@
     </style>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col">
-    <!-- Header -->
-    <header class="bg-white border-b px-6 py-4 flex items-center justify-between">
+    <header class="bg-white border-b px-6 py-3 flex items-center justify-between">
         <div class="flex items-center gap-4">
-            <h1 class="text-xl font-semibold text-gray-800">Collab Server</h1>
-            <span id="connectionStatus" class="text-sm text-gray-500">A ligar...</span>
+            <h1 class="text-xl font-bold text-gray-800">Dialogue</h1>
+            <span id="status" class="text-sm text-gray-500">A ligar...</span>
         </div>
-        <div class="flex items-center gap-4">
-            <div id="agentsList" class="flex gap-2"></div>
-            <button onclick="clearAll()" class="text-sm text-red-600 hover:text-red-800">Limpar tudo</button>
+        <div class="flex items-center gap-3">
+            <div id="agents" class="flex gap-2 text-sm"></div>
+            <button onclick="newConversation()" class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">
+                Nova Conversa
+            </button>
         </div>
     </header>
 
-    <!-- Main content -->
-    <div class="flex-1 flex overflow-hidden">
-        <!-- Sidebar - Threads -->
-        <aside class="w-64 bg-white border-r flex flex-col">
-            <div class="p-4 border-b">
-                <h2 class="font-medium text-gray-700">Threads</h2>
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+        
+        <div id="typing" class="hidden px-4 py-2 text-sm text-gray-500">
+            <span class="typing"><span></span><span></span><span></span></span>
+            <span id="typingAgent"></span> está a escrever...
+        </div>
+
+        <div class="bg-white border-t p-4">
+            <div class="flex gap-2 mb-2">
+                <select id="to" class="text-sm border rounded px-2 py-1">
+                    <option value="all">@todos</option>
+                    <option value="claude">@claude</option>
+                    <option value="codex">@codex</option>
+                </select>
             </div>
-            <div id="threadsList" class="flex-1 overflow-y-auto p-2">
-                <button onclick="selectThread(null)" class="w-full text-left px-3 py-2 rounded hover:bg-gray-100 text-sm thread-item active">
-                    📬 Todas as mensagens
+            <div class="flex gap-2">
+                <input type="text" id="input" placeholder="Escreve uma mensagem..." 
+                    class="flex-1 border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onkeypress="if(event.key==='Enter')send()">
+                <button onclick="send()" class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600">
+                    Enviar
                 </button>
             </div>
-            <div class="p-4 border-t">
-                <button onclick="createThread()" class="w-full bg-blue-500 text-white px-4 py-2 rounded text-sm hover:bg-blue-600">
-                    + Nova Thread
-                </button>
-            </div>
-        </aside>
-
-        <!-- Chat area -->
-        <main class="flex-1 flex flex-col bg-gray-50">
-            <!-- Messages -->
-            <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
-                <div class="text-center text-gray-400 text-sm py-8">
-                    Sem mensagens ainda. Começa a conversa!
-                </div>
-            </div>
-
-            <!-- Typing indicator -->
-            <div id="typingIndicator" class="hidden px-4 py-2 text-sm text-gray-500">
-                <span class="typing-indicator">
-                    <span class="inline-block w-2 h-2 bg-gray-400 rounded-full mx-0.5"></span>
-                    <span class="inline-block w-2 h-2 bg-gray-400 rounded-full mx-0.5"></span>
-                    <span class="inline-block w-2 h-2 bg-gray-400 rounded-full mx-0.5"></span>
-                </span>
-                <span id="typingAgent"></span> está a escrever...
-            </div>
-
-            <!-- Input area -->
-            <div class="bg-white border-t p-4">
-                <div class="flex gap-2 mb-2">
-                    <select id="messageType" class="text-sm border rounded px-2 py-1">
-                        <option value="chat">💬 Chat</option>
-                        <option value="task">📋 Tarefa</option>
-                        <option value="code">💻 Código</option>
-                        <option value="review">👀 Review</option>
-                        <option value="question">❓ Pergunta</option>
-                    </select>
-                    <select id="messageTo" class="text-sm border rounded px-2 py-1">
-                        <option value="all">@todos</option>
-                        <option value="claude">@claude</option>
-                        <option value="codex">@codex</option>
-                    </select>
-                </div>
-                <div class="flex gap-2">
-                    <input 
-                        type="text" 
-                        id="messageInput" 
-                        placeholder="Escreve uma mensagem... (Enter para enviar)"
-                        class="flex-1 border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        onkeypress="handleKeyPress(event)"
-                    >
-                    <button onclick="sendMessage()" class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600">
-                        Enviar
-                    </button>
-                </div>
-            </div>
-        </main>
+        </div>
     </div>
 
     <script>
-        // Estado global
         let ws = null;
         let messages = [];
-        let agents = {};
-        let currentThread = null;
-        let reconnectAttempts = 0;
 
-        // Conectar WebSocket
         function connect() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${window.location.host}/ws/user`);
+            ws = new WebSocket(`ws://${location.host}/ws/user`);
             
             ws.onopen = () => {
-                document.getElementById('connectionStatus').textContent = '🟢 Ligado';
-                document.getElementById('connectionStatus').className = 'text-sm text-green-600';
-                reconnectAttempts = 0;
-                loadMessages();
-                loadAgents();
+                document.getElementById('status').textContent = '🟢 Ligado';
+                document.getElementById('status').className = 'text-sm text-green-600';
+                load();
             };
             
             ws.onclose = () => {
-                document.getElementById('connectionStatus').textContent = '🔴 Desligado';
-                document.getElementById('connectionStatus').className = 'text-sm text-red-600';
-                // Reconectar após delay
-                setTimeout(() => {
-                    reconnectAttempts++;
-                    if (reconnectAttempts < 10) connect();
-                }, Math.min(1000 * reconnectAttempts, 5000));
+                document.getElementById('status').textContent = '🔴 Desligado';
+                document.getElementById('status').className = 'text-sm text-red-600';
+                setTimeout(connect, 2000);
             };
             
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                handleWebSocketMessage(data);
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                if (msg.event === 'new_message') {
+                    if (!messages.find(m => m.id === msg.data.id)) {
+                        messages.push(msg.data);
+                        render();
+                    }
+                } else if (msg.event === 'typing' && msg.data.agent_id !== 'user') {
+                    showTyping(msg.data.agent_id);
+                } else if (msg.event === 'agent_joined' || msg.event === 'agent_left') {
+                    loadAgents();
+                }
             };
         }
 
-        // Processar mensagens WebSocket
-        function handleWebSocketMessage(data) {
-            switch (data.event) {
-                case 'new_message':
-                    addMessage(data.data);
-                    break;
-                case 'agent_joined':
-                    updateAgent(data.data.agent_id, 'online');
-                    break;
-                case 'agent_left':
-                    updateAgent(data.data.agent_id, 'offline');
-                    break;
-                case 'typing':
-                    showTyping(data.data.agent_id);
-                    break;
-            }
+        async function load() {
+            const r = await fetch('/api/messages');
+            const data = await r.json();
+            messages = data.messages;
+            render();
+            loadAgents();
         }
 
-        // Carregar mensagens via REST
-        async function loadMessages() {
-            try {
-                const url = currentThread 
-                    ? `/api/messages?thread_id=${currentThread}` 
-                    : '/api/messages';
-                const response = await fetch(url);
-                const data = await response.json();
-                messages = data.messages;
-                renderMessages();
-            } catch (error) {
-                console.error('Erro a carregar mensagens:', error);
-            }
-        }
-
-        // Carregar agentes
         async function loadAgents() {
-            try {
-                const response = await fetch('/api/agents');
-                const data = await response.json();
-                data.agents.forEach(agent => {
-                    agents[agent.id] = agent;
-                });
-                renderAgents();
-            } catch (error) {
-                console.error('Erro a carregar agentes:', error);
-            }
+            const r = await fetch('/api/agents');
+            const data = await r.json();
+            document.getElementById('agents').innerHTML = data.agents
+                .filter(a => a.id !== 'user')
+                .map(a => `<span class="flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full ${a.status === 'online' ? 'bg-green-500' : 'bg-gray-400'}"></span>
+                    ${a.name}
+                </span>`).join('');
         }
 
-        // Renderizar mensagens
-        function renderMessages() {
-            const container = document.getElementById('messagesContainer');
-            
+        function render() {
+            const container = document.getElementById('messages');
             if (messages.length === 0) {
-                container.innerHTML = `
-                    <div class="text-center text-gray-400 text-sm py-8">
-                        Sem mensagens ainda. Começa a conversa!
-                    </div>
-                `;
+                container.innerHTML = '<div class="text-center text-gray-400 py-8">Nova conversa. Escreve algo para começar.</div>';
                 return;
             }
             
-            container.innerHTML = messages.map(msg => {
-                const isUser = msg.from === 'user';
-                const agentClass = msg.from === 'user' ? 'agent-user' : 
-                                   msg.from === 'claude' ? 'agent-claude' : 
-                                   msg.from === 'codex' ? 'agent-codex' : 'agent-other';
+            container.innerHTML = messages.map(m => {
+                const isUser = m.from === 'user';
+                const badge = m.from === 'user' ? 'agent-user' : m.from === 'claude' ? 'agent-claude' : 'agent-codex';
+                const time = new Date(m.timestamp).toLocaleTimeString('pt-PT', {hour: '2-digit', minute: '2-digit'});
+                const toLabel = m.to !== 'all' ? `<span class="text-xs text-gray-400">→ @${m.to}</span>` : '';
                 
-                const typeEmoji = {
-                    'chat': '💬',
-                    'task': '📋',
-                    'code': '💻',
-                    'review': '👀',
-                    'question': '❓',
-                    'system': '⚙️'
-                }[msg.type] || '💬';
-                
-                const time = new Date(msg.timestamp).toLocaleTimeString('pt-PT', { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
-                });
-                
-                return `
-                    <div class="message-enter ${isUser ? 'flex justify-end' : ''}">
-                        <div class="max-w-2xl ${isUser ? 'bg-blue-500 text-white' : 'bg-white'} rounded-lg shadow p-4">
-                            <div class="flex items-center gap-2 mb-2">
-                                <span class="agent-badge ${agentClass}">${msg.from}</span>
-                                ${msg.to !== 'all' ? `<span class="text-xs text-gray-400">→ @${msg.to}</span>` : ''}
-                                <span class="text-xs ${isUser ? 'text-blue-200' : 'text-gray-400'}">${typeEmoji} ${time}</span>
-                            </div>
-                            <div class="${isUser ? '' : 'text-gray-700'} whitespace-pre-wrap">${escapeHtml(msg.content)}</div>
+                return `<div class="message-enter ${isUser ? 'flex justify-end' : ''}">
+                    <div class="max-w-xl ${isUser ? 'bg-blue-500 text-white' : 'bg-white'} rounded-lg shadow px-4 py-3">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-xs font-medium px-2 py-0.5 rounded-full ${badge}">${m.from}</span>
+                            ${toLabel}
+                            <span class="text-xs ${isUser ? 'text-blue-200' : 'text-gray-400'}">${time}</span>
                         </div>
+                        <div class="whitespace-pre-wrap">${escapeHtml(m.content)}</div>
                     </div>
-                `;
+                </div>`;
             }).join('');
             
             container.scrollTop = container.scrollHeight;
         }
 
-        // Renderizar agentes
-        function renderAgents() {
-            const container = document.getElementById('agentsList');
-            container.innerHTML = Object.values(agents).map(agent => {
-                const statusColor = agent.status === 'online' ? 'bg-green-500' : 
-                                    agent.status === 'busy' ? 'bg-yellow-500' : 'bg-gray-400';
-                return `
-                    <div class="flex items-center gap-1 text-sm text-gray-600">
-                        <span class="w-2 h-2 rounded-full ${statusColor}"></span>
-                        ${agent.name || agent.id}
-                    </div>
-                `;
-            }).join('');
-        }
-
-        // Adicionar mensagem
-        function addMessage(msg) {
-            // Evitar duplicados
-            if (!messages.find(m => m.id === msg.id)) {
-                messages.push(msg);
-                renderMessages();
-            }
-        }
-
-        // Atualizar agente
-        function updateAgent(agentId, status) {
-            if (agents[agentId]) {
-                agents[agentId].status = status;
-            } else {
-                agents[agentId] = { id: agentId, name: agentId, status };
-            }
-            renderAgents();
-        }
-
-        // Mostrar indicador de typing
-        let typingTimeout = null;
-        function showTyping(agentId) {
-            if (agentId === 'user') return;
-            
-            document.getElementById('typingIndicator').classList.remove('hidden');
-            document.getElementById('typingAgent').textContent = agentId;
-            
-            clearTimeout(typingTimeout);
-            typingTimeout = setTimeout(() => {
-                document.getElementById('typingIndicator').classList.add('hidden');
-            }, 3000);
-        }
-
-        // Enviar mensagem
-        async function sendMessage() {
-            const input = document.getElementById('messageInput');
+        async function send() {
+            const input = document.getElementById('input');
             const content = input.value.trim();
             if (!content) return;
             
-            const type = document.getElementById('messageType').value;
-            const to = document.getElementById('messageTo').value;
+            const to = document.getElementById('to').value;
             
-            try {
-                await fetch('/api/send', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        from: 'user',
-                        to: to,
-                        type: type,
-                        content: content,
-                        thread_id: currentThread
-                    })
-                });
-                input.value = '';
-            } catch (error) {
-                console.error('Erro a enviar mensagem:', error);
-            }
-        }
-
-        // Enter para enviar
-        function handleKeyPress(event) {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                sendMessage();
-            }
-        }
-
-        // Selecionar thread
-        function selectThread(threadId) {
-            currentThread = threadId;
-            document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('bg-blue-100'));
-            event?.target?.classList.add('bg-blue-100');
-            loadMessages();
-        }
-
-        // Criar thread
-        async function createThread() {
-            const title = prompt('Nome da thread:');
-            if (!title) return;
+            await fetch('/api/send', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({from: 'user', to, type: 'chat', content})
+            });
             
-            try {
-                const response = await fetch('/api/threads', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title, participants: ['user'] })
-                });
-                const data = await response.json();
-                // Recarregar threads
-                loadThreads();
-            } catch (error) {
-                console.error('Erro a criar thread:', error);
-            }
+            input.value = '';
         }
 
-        // Limpar tudo
-        async function clearAll() {
-            if (!confirm('Tens a certeza que queres limpar todas as mensagens?')) return;
-            
-            try {
-                await fetch('/api/clear', { method: 'POST' });
-                messages = [];
-                renderMessages();
-            } catch (error) {
-                console.error('Erro a limpar:', error);
-            }
+        async function newConversation() {
+            if (messages.length > 0 && !confirm('Limpar conversa e começar de novo?')) return;
+            await fetch('/api/clear', {method: 'POST'});
+            messages = [];
+            render();
         }
 
-        // Escape HTML
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        let typingTimeout;
+        function showTyping(agent) {
+            document.getElementById('typing').classList.remove('hidden');
+            document.getElementById('typingAgent').textContent = agent;
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                document.getElementById('typing').classList.add('hidden');
+            }, 3000);
         }
 
-        // Iniciar
+        function escapeHtml(t) {
+            const d = document.createElement('div');
+            d.textContent = t;
+            return d.innerHTML;
+        }
+
         connect();
     </script>
 </body>
